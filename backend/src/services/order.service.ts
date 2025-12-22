@@ -1,45 +1,56 @@
-import { PrismaClient } from '@prisma/client';
 import { AppError } from '../middleware/errorHandler';
-
-const prisma = new PrismaClient();
+import prisma from '../utils/prisma';
 
 export class OrderService {
-  static async createOrder(data: any) {
-    return prisma.$transaction(async (tx: any) => {
-      // 1. Create Order
-      const order = await tx.order.create({
-        data: {
-          customerName: data.customerName,
-          totalPrice: data.totalPrice,
-          items: {
-            create: data.items.map((item: any) => ({
-              productId: item.productId,
-              quantity: item.quantity,
-              unitPrice: item.unitPrice,
-            })),
-          },
-        },
-        include: { items: true },
-      });
-
-      // 2. Deduct inventory
-      for (const item of data.items) {
-        const product = await tx.product.findUnique({ where: { id: item.productId } });
-        if (!product || product.stockLevel < item.quantity) {
-          throw new AppError(`Insufficient stock for product ${item.productId}`, 400);
-        }
-        await tx.product.update({
-          where: { id: item.productId },
-          data: { stockLevel: { decrement: item.quantity } },
-        });
-      }
-
-      return order;
+  static async getAll() {
+    return await prisma.order.findMany({
+      include: { items: true },
+      orderBy: { createdAt: 'desc' }
     });
   }
 
-  static async getAll() {
-    return prisma.order.findMany({ include: { items: true } });
+  static async createOrder(data: any) {
+    // data should contain customerName and items[{productId, quantity}]
+    const { customerName, items } = data;
+
+    return await prisma.$transaction(async (tx: any) => {
+      let totalPrice = 0;
+      const orderItemsData = [];
+
+      for (const item of items) {
+        const product = await tx.product.findUnique({
+          where: { id: item.productId }
+        });
+
+        if (!product) throw new AppError(`Product ${item.productId} not found`, 404);
+        if (product.stockLevel < item.quantity) {
+          throw new AppError(`Insufficient stock for ${product.name}`, 400);
+        }
+
+        // Deduct stock
+        await tx.product.update({
+          where: { id: product.id },
+          data: { stockLevel: product.stockLevel - item.quantity }
+        });
+
+        totalPrice += (product.price as any) * item.quantity;
+        orderItemsData.push({
+          productId: product.id,
+          quantity: item.quantity,
+          unitPrice: product.price
+        });
+      }
+
+      return await tx.order.create({
+        data: {
+          customerName,
+          totalPrice,
+          items: {
+            create: orderItemsData
+          }
+        },
+        include: { items: true }
+      });
+    });
   }
 }
-

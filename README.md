@@ -15,29 +15,37 @@ Nexus is a robust, production-ready system for managing inventory levels and pro
 
 ### Prerequisites
 
-- Node.js (v18+)
-- PostgreSQL
+- Node.js (v20+)
 
 ### Installation
 
-1. Clone the repository.
-2. Install dependencies for both backend and frontend:
+1. Install dependencies for both backend and frontend:
    ```bash
    cd backend && npm install
    cd ../frontend && npm install
    ```
-3. Configure environment variables in `backend/.env`.
-4. Run Prisma migrations:
-   ```bash
-   cd backend && npx prisma db push
-   ```
-5. Start the development servers:
-   ```bash
-   # Backend
-   cd backend && npm run dev
-   # Frontend
-   cd frontend && npm run dev
-   ```
+
+### Running the Project
+
+To run both servers effectively, use two terminal windows:
+
+**Terminal 1: Backend API**
+
+```bash
+cd backend
+npm run dev
+```
+
+_Running on `http://localhost:3001`_
+
+**Terminal 2: Frontend Dashboard**
+
+```bash
+cd frontend
+npm run dev
+```
+
+_Running on `http://localhost:5173`_
 
 ## Architecture
 

@@ -6,6 +6,7 @@ import dotenv from "dotenv";
 import authRoutes from './routes/auth.routes';
 import inventoryRoutes from './routes/inventory.routes';
 import orderRoutes from './routes/order.routes';
+import notificationRoutes from './routes/notification.routes';
 import { errorHandler } from './middleware/errorHandler';
 
 dotenv.config();
@@ -22,6 +23,7 @@ app.use(express.json());
 app.use('/api/auth', authRoutes);
 app.use('/api/inventory', inventoryRoutes);
 app.use('/api/orders', orderRoutes);
+app.use('/api/notifications', notificationRoutes);
 
 // Basic Health Check
 app.get('/health', (req, res) => {

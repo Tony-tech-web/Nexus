@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { 
   LayoutDashboard, 
   Package, 
@@ -8,29 +8,115 @@ import {
   Search,
   Bell,
   Settings,
-  MoreVertical,
-  ChevronRight,
   TrendingUp,
   AlertTriangle,
   Zap,
-  Globe,
-  Database,
-  User as UserIcon
+  X,
+  RefreshCcw
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Card } from './components/ui/Card';
+const Card = ({ children, className }: { children: React.ReactNode, className?: string }) => (
+  <div className={cn("p-6 rounded-3xl border transition-all duration-500", className)}>
+    {children}
+  </div>
+);
 import { cn } from './utils/cn';
 
+interface Product {
+  id: string;
+  name: string;
+  sku: string;
+  price: number;
+  stockLevel: number;
+  lowStockThreshold: number;
+}
+
+interface Order {
+  id: string;
+  customerName: string;
+  status: 'PENDING' | 'SHIPPED' | 'COMPLETED' | 'CANCELLED';
+  totalPrice: number;
+  createdAt: string;
+}
+
+interface Notification {
+  id: string;
+  title: string;
+  message: string;
+  type: string;
+  isRead: boolean;
+  createdAt: string;
+}
+
+interface User {
+  id: string;
+  email: string;
+  role: string;
+}
+
+const API_BASE = 'http://localhost:3001/api';
+
 const App: React.FC = () => {
-  const [activeTab, setActiveTab] = useState('inventory');
+  const [activeTab, setActiveTab] = useState('dashboard');
   const [scrolled, setScrolled] = useState(false);
   const [isHeliumMode, setIsHeliumMode] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [isSyncing, setIsSyncing] = useState(false);
+  
+  // Data State
+  const [products, setProducts] = useState<Product[]>([]);
+  const [orders, setOrders] = useState<Order[]>([]);
+  const [notifications, setNotifications] = useState<Notification[]>([]);
+  const [user, setUser] = useState<User | null>(null);
+
+  const getHeaders = () => {
+    const token = localStorage.getItem('accessToken');
+    return {
+      'Content-Type': 'application/json',
+      ...(token ? { 'Authorization': `Bearer ${token}` } : {})
+    };
+  };
+
+  // Modal State
+  const [showAddModal, setShowAddModal] = useState(false);
+  const [modalType, setModalType] = useState<'product' | 'order'>('product');
+
+  const fetchData = useCallback(async () => {
+    setIsSyncing(true);
+    try {
+      const headers = getHeaders();
+      
+      // Fetch User Profile
+      const meRes = await fetch(`${API_BASE}/auth/me`, { headers });
+      if (meRes.ok) {
+        setUser(await meRes.json());
+      }
+
+      // Fetch Products
+      const prodRes = await fetch(`${API_BASE}/inventory`, { headers });
+      if (prodRes.ok) setProducts(await prodRes.json());
+
+      // Fetch Orders
+      const orderRes = await fetch(`${API_BASE}/orders`, { headers });
+      if (orderRes.ok) setOrders(await orderRes.json());
+
+      // Fetch Notifications
+      const notifRes = await fetch(`${API_BASE}/notifications`, { headers });
+      if (notifRes.ok) setNotifications(await notifRes.json());
+
+    } catch (error) {
+      console.error('Failed to fetch data', error);
+    } finally {
+      setIsSyncing(false);
+    }
+  }, []);
 
   useEffect(() => {
     const handleScroll = () => setScrolled(window.scrollY > 20);
     window.addEventListener('scroll', handleScroll);
+    fetchData();
     return () => window.removeEventListener('scroll', handleScroll);
-  }, []);
+  }, [fetchData]);
 
   const menuItems = [
     { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
@@ -38,12 +124,37 @@ const App: React.FC = () => {
     { id: 'orders', label: 'Orders', icon: ShoppingCart },
   ];
 
-  const stats = [
-    { label: 'Inventory', value: '1,284', trend: '+12%', icon: Package, color: isHeliumMode ? 'text-blue-400' : 'text-blue-500' },
-    { label: 'Active Orders', value: '43', trend: '-5%', icon: ShoppingCart, color: isHeliumMode ? 'text-indigo-400' : 'text-indigo-500' },
-    { label: 'Critical Stock', value: '8', trend: 'LOW', icon: AlertTriangle, color: isHeliumMode ? 'text-rose-400' : 'text-rose-500' },
-    { label: 'Performance', value: '98%', trend: 'OPTIMAL', icon: TrendingUp, color: isHeliumMode ? 'text-emerald-400' : 'text-emerald-500' },
-  ];
+  const stats = useMemo(() => [
+    { label: 'Inventory', value: products.length.toString(), trend: '+12%', icon: Package, color: isHeliumMode ? 'text-blue-400' : 'text-blue-500' },
+    { label: 'Active Orders', value: orders.filter(o => o.status !== 'COMPLETED').length.toString(), trend: 'LIVE', icon: ShoppingCart, color: isHeliumMode ? 'text-indigo-400' : 'text-indigo-500' },
+    { label: 'Low Stock', value: products.filter(p => p.stockLevel <= p.lowStockThreshold).length.toString(), trend: 'WARNING', icon: AlertTriangle, color: isHeliumMode ? 'text-rose-400' : 'text-rose-500' },
+    { label: 'Revenue', value: '$' + orders.reduce((sum, o) => sum + o.totalPrice, 0).toLocaleString(), trend: '+8%', icon: TrendingUp, color: isHeliumMode ? 'text-emerald-400' : 'text-emerald-500' },
+  ], [products, orders, isHeliumMode]);
+
+  const filteredProducts = products.filter(p => 
+    p.name.toLowerCase().includes(searchQuery.toLowerCase()) || 
+    p.sku.toLowerCase().includes(searchQuery.toLowerCase())
+  );
+
+  const filteredOrders = orders.filter(o => 
+    o.customerName.toLowerCase().includes(searchQuery.toLowerCase()) || 
+    o.id.toLowerCase().includes(searchQuery.toLowerCase())
+  );
+
+  const handleSignOut = async () => {
+    try {
+      await fetch(`${API_BASE}/auth/logout`, { 
+        method: 'POST', 
+        headers: getHeaders() 
+      });
+    } catch (e) {
+      console.error('Logout error', e);
+    } finally {
+      localStorage.removeItem('accessToken');
+      localStorage.removeItem('refreshToken');
+      window.location.reload();
+    }
+  };
 
   return (
     <div className={cn(
@@ -58,7 +169,7 @@ const App: React.FC = () => {
           : "w-64 bg-slate-900/50 backdrop-blur-xl border-slate-800"
       )}>
         <div className="h-20 flex items-center px-6 mb-8 pt-4">
-          <div className="flex items-center gap-3 group cursor-pointer">
+          <div className="flex items-center gap-3 group cursor-pointer" onClick={() => setActiveTab('dashboard')}>
             <div className={cn(
               "w-10 h-10 rounded-xl flex items-center justify-center font-black transition-all duration-300 transform group-hover:rotate-6 shadow-lg",
               isHeliumMode 
@@ -71,12 +182,6 @@ const App: React.FC = () => {
               <div className="flex flex-col">
                 <span className="text-xl font-bold tracking-tight text-white leading-none">Nexus</span>
                 <span className="text-[10px] uppercase tracking-tighter text-slate-500 font-bold">Enterprise OMS</span>
-              </div>
-            )}
-            {isHeliumMode && (
-              <div className="absolute left-14 top-1 flex flex-col opacity-0 lg:opacity-100 transition-opacity">
-                 <span className="text-lg font-bold tracking-tight text-white">Nexus</span>
-                 <span className="text-[9px] uppercase tracking-tighter text-slate-500 font-bold">Helium Core</span>
               </div>
             )}
           </div>
@@ -98,13 +203,12 @@ const App: React.FC = () => {
                 <motion.div layoutId="activeNavBG" className="absolute inset-0 bg-white/[0.03] rounded-xl border border-white/[0.05]" />
               )}
               <item.icon className={cn("w-5 h-5 transition-transform group-hover:scale-110", activeTab === item.id ? (isHeliumMode ? "text-white" : "text-blue-500") : "text-slate-500")} />
-              <span className={cn(isHeliumMode && "opacity-0 lg:opacity-100 transition-opacity")}>{item.label}</span>
+              <span className={cn(isHeliumMode && "opacity-0 lg:opacity-100 transition-opacity whitespace-nowrap")}>{item.label}</span>
             </button>
           ))}
         </nav>
 
         <div className="p-6 mt-auto border-t border-white/5 space-y-4">
-          {/* Mode Toggle */}
           <button 
             onClick={() => setIsHeliumMode(!isHeliumMode)}
             className={cn(
@@ -115,14 +219,17 @@ const App: React.FC = () => {
             )}
           >
             <Zap className={cn("w-4 h-4", isHeliumMode ? "text-yellow-400 shadow-[0_0_10px_rgba(250,204,21,0.5)]" : "text-slate-400")} />
-            <span className={cn(isHeliumMode && "opacity-0 lg:opacity-100 transition-opacity", "text-xs font-bold")}>
+            <span className={cn(isHeliumMode && "opacity-0 lg:opacity-100 transition-opacity whitespace-nowrap", "text-xs font-bold")}>
               {isHeliumMode ? 'Helium Enabled' : 'Standard View'}
             </span>
           </button>
 
-          <button className="w-full h-10 flex items-center gap-4 px-3 text-rose-500 hover:text-rose-400 transition-colors">
+          <button 
+            onClick={handleSignOut}
+            className="w-full h-10 flex items-center gap-4 px-3 text-rose-500 hover:text-rose-400 transition-colors"
+          >
             <LogOut className="w-5 h-5" />
-            <span className={cn(isHeliumMode && "opacity-0 lg:opacity-100 transition-opacity", "text-sm font-medium")}>Sign Out</span>
+            <span className={cn(isHeliumMode && "opacity-0 lg:opacity-100 transition-opacity whitespace-nowrap", "text-sm font-medium")}>Sign Out</span>
           </button>
         </div>
       </aside>
@@ -144,6 +251,8 @@ const App: React.FC = () => {
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500" />
               <input 
                 type="text" 
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
                 placeholder={isHeliumMode ? "Command..." : "Search everything..."} 
                 className={cn(
                   "w-48 lg:w-64 rounded-xl py-2 pl-10 pr-4 text-xs transition-all duration-500 focus:outline-none",
@@ -156,22 +265,28 @@ const App: React.FC = () => {
           </div>
 
           <div className="flex items-center gap-4">
-            {!isHeliumMode && (
-              <div className="hidden md:flex items-center gap-4 text-xs font-semibold text-slate-500 px-4">
-                 <div className="flex items-center gap-2"><Globe className="w-3 h-3 text-emerald-500" /> Sydney, AU</div>
-                 <div className="flex items-center gap-2"><Database className="w-3 h-3 text-blue-500" /> v2.4.0</div>
-              </div>
-            )}
+            <button 
+              onClick={fetchData}
+              disabled={isSyncing}
+              className={cn(
+                "p-2 rounded-lg transition-colors group",
+                isSyncing ? "text-blue-500" : "text-slate-500 hover:text-white"
+              )}
+            >
+              <RefreshCcw className={cn("w-4 h-4", isSyncing && "animate-spin")} />
+            </button>
             <button className="p-2 text-slate-500 hover:text-white transition-colors relative">
               <Bell className="w-4 h-4" />
-              <span className="absolute top-2 right-2 w-1.5 h-1.5 bg-blue-500 rounded-full"></span>
+              {notifications.filter(n => !n.isRead).length > 0 && (
+                <span className="absolute top-2 right-2 w-1.5 h-1.5 bg-blue-500 rounded-full"></span>
+              )}
             </button>
             <div className="h-8 w-px bg-white/5 mx-2" />
             <div className="flex items-center gap-3 cursor-pointer group">
                <div className="w-8 h-8 rounded-full bg-slate-800 border border-slate-700 flex items-center justify-center text-[10px] font-bold text-white group-hover:border-blue-500/50 transition-colors">
-                 A
+                 {user?.email[0].toUpperCase() || 'A'}
                </div>
-               {!isHeliumMode && <span className="text-xs font-bold">Admin</span>}
+               {!isHeliumMode && <span className="text-xs font-bold">{user?.role || 'Admin'}</span>}
             </div>
           </div>
         </header>
@@ -191,15 +306,22 @@ const App: React.FC = () => {
                 </h1>
                 <p className="mt-1 text-slate-500">Operational overview of your supply chain.</p>
               </div>
-              <button className={cn(
-                "px-6 py-3 rounded-2xl font-bold transition-all flex items-center gap-2 active:scale-95 shadow-xl",
-                isHeliumMode 
-                  ? "bg-white text-black hover:bg-slate-200" 
-                  : "bg-blue-600 text-white hover:bg-blue-500 shadow-blue-600/20"
-                )}>
-                <Plus className="w-5 h-5" />
-                New {activeTab === 'inventory' ? 'Product' : 'Order'}
-              </button>
+              {(activeTab === 'inventory' || activeTab === 'orders') && (
+                <button 
+                  onClick={() => {
+                    setModalType(activeTab === 'inventory' ? 'product' : 'order');
+                    setShowAddModal(true);
+                  }}
+                  className={cn(
+                    "px-6 py-3 rounded-2xl font-bold transition-all flex items-center gap-2 active:scale-95 shadow-xl",
+                    isHeliumMode 
+                      ? "bg-white text-black hover:bg-slate-200" 
+                      : "bg-blue-600 text-white hover:bg-blue-500 shadow-blue-600/20"
+                    )}>
+                  <Plus className="w-5 h-5" />
+                  New {activeTab === 'inventory' ? 'Product' : 'Order'}
+                </button>
+              )}
             </div>
           </motion.div>
 
@@ -212,8 +334,8 @@ const App: React.FC = () => {
                 animate={{ opacity: 1, scale: 1 }}
                 transition={{ delay: i * 0.1 }}
               >
-                <div className={cn(
-                  "p-6 rounded-3xl border transition-all duration-500 group",
+                <Card className={cn(
+                  "group",
                   isHeliumMode 
                     ? "bg-white/[0.01] border-white/[0.04] hover:bg-white/[0.02]" 
                     : "bg-slate-900/50 border-slate-800 hover:border-slate-700"
@@ -222,85 +344,264 @@ const App: React.FC = () => {
                     <div className={cn("p-2 rounded-xl transition-transform group-hover:scale-110", isHeliumMode ? "bg-white/[0.03]" : "bg-slate-800")}>
                       <stat.icon className={cn("w-5 h-5", stat.color)} />
                     </div>
-                    {isHeliumMode && <span className="text-[10px] font-mono text-slate-600">{stat.trend}</span>}
                   </div>
-                  <h3 className="text-slate-500 text-xs font-semibold uppercase tracking-widest">{stat.label}</h3>
+                  <h3 className="text-slate-500 text-[10px] font-semibold uppercase tracking-widest">{stat.label}</h3>
                   <div className="flex items-baseline justify-between mt-1">
                     <p className="text-3xl font-bold text-white tracking-tighter">{stat.value}</p>
-                    {!isHeliumMode && <span className={cn("text-xs font-bold px-2 py-0.5 rounded-full bg-slate-800", stat.color.replace('text-', 'text-'))}>{stat.trend}</span>}
+                    <span className={cn("text-[10px] font-bold px-2 py-0.5 rounded-full", 
+                      isHeliumMode ? "bg-white/5 text-slate-400" : "bg-slate-800 " + stat.color
+                    )}>{stat.trend}</span>
                   </div>
-                </div>
+                </Card>
               </motion.div>
             ))}
           </div>
 
-          {/* Main Content */}
+          {/* Main Content Sections */}
           <AnimatePresence mode="wait">
-            <motion.div
-              key={activeTab + isHeliumMode}
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, scale: 0.98 }}
-              transition={{ duration: 0.4 }}
-            >
-              <Card className={cn(
-                "min-h-[500px] border transition-all flex flex-col group relative overflow-hidden",
-                isHeliumMode ? "bg-white/[0.01] border-white/[0.04]" : "bg-slate-900 border-slate-800"
-              )}>
-                 <div className={cn(
-                   "p-6 border-b flex items-center justify-between",
-                   isHeliumMode ? "border-white/[0.04] bg-white/[0.01]" : "border-slate-800 bg-slate-800/20"
-                 )}>
-                   <div className="flex items-center gap-3">
-                     <span className={cn("h-4 w-1 rounded-full", isHeliumMode ? "bg-white/20" : "bg-blue-500")}></span>
-                     <h3 className="font-bold text-white uppercase tracking-widest text-xs">Live System Feed</h3>
-                   </div>
-                   <button className="p-2 hover:bg-white/5 rounded-lg transition-colors text-slate-500 hover:text-white">
-                      <MoreVertical className="w-5 h-5" />
-                   </button>
-                 </div>
-
-                 <div className="flex-1 flex flex-col items-center justify-center p-20 relative z-10">
-                    <motion.div 
-                      animate={isHeliumMode ? { 
-                        y: [-10, 10, -10],
-                        scale: [1, 1.05, 1],
-                      } : {}}
-                      transition={{ duration: 6, repeat: Infinity }}
-                      className={cn(
-                        "w-48 h-48 rounded-full flex items-center justify-center border transition-all relative",
-                        isHeliumMode ? "bg-white/5 border-white/10 backdrop-blur-3xl" : "bg-slate-800/50 border-slate-700 shadow-2xl"
-                      )}
-                    >
-                      <Package className={cn("w-16 h-16 transition-colors duration-1000", isHeliumMode ? "text-white/20" : "text-blue-500/50")} />
-                      {isHeliumMode && <div className="absolute -inset-10 bg-blue-500/10 blur-[100px] rounded-full animate-pulse transition-opacity"></div>}
-                    </motion.div>
-
-                    <h4 className="mt-12 text-2xl font-bold text-white tracking-tight">
-                      {isHeliumMode ? 'Helium Node Active' : 'Nexus Enterprise Connected'}
-                    </h4>
-                    <p className="mt-2 text-slate-500 max-w-sm text-center text-sm leading-relaxed">
-                      {isHeliumMode 
-                        ? 'System operating in ultra-minimal lightweight mode.' 
-                        : 'Your enterprise inventory network is synchronized and secure.'}
-                    </p>
-                    
-                    {!isHeliumMode && (
-                      <div className="mt-8 flex gap-3">
-                        <button className="px-6 py-2 bg-slate-800 hover:bg-slate-700 text-white rounded-xl text-xs font-bold border border-slate-700 transition-all">
-                          View Inventory
-                        </button>
-                        <button className="px-6 py-2 bg-blue-600/10 hover:bg-blue-600/20 text-blue-400 rounded-xl text-xs font-bold border border-blue-500/20 transition-all">
-                           API Logs
-                        </button>
+            {activeTab === 'dashboard' && (
+              <motion.div
+                key="dashboard"
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, scale: 0.98 }}
+                className="grid grid-cols-1 lg:grid-cols-3 gap-8"
+              >
+                <Card className="lg:col-span-2 p-8 h-[400px] flex flex-col justify-center items-center text-center">
+                  <div className="w-20 h-20 rounded-full bg-blue-600/10 flex items-center justify-center mb-6">
+                    <LayoutDashboard className="w-10 h-10 text-blue-500" />
+                  </div>
+                  <h3 className="text-2xl font-bold text-white mb-2">Welcome Back, Admin</h3>
+                  <p className="text-slate-500 max-w-sm">Everything looks optimal. You have {products.filter(p => p.stockLevel <= p.lowStockThreshold).length} items requiring attention.</p>
+                  <button 
+                    onClick={() => setActiveTab('inventory')}
+                    className="mt-8 px-8 py-3 bg-slate-800 hover:bg-slate-700 text-white rounded-2xl font-bold border border-slate-700 transition-all"
+                  >
+                    Manage Inventory
+                  </button>
+                </Card>
+                <Card className="p-8 h-[400px]">
+                  <h3 className="font-bold text-white mb-6 uppercase tracking-widest text-xs">Recent Orders</h3>
+                  <div className="space-y-4 overflow-y-auto max-h-[280px] custom-scrollbar">
+                    {orders.slice(0, 5).map(order => (
+                      <div key={order.id} className="flex items-center justify-between p-4 rounded-2xl bg-white/[0.02] border border-white/5">
+                        <div className="flex flex-col">
+                          <span className="text-xs font-bold text-white">{order.customerName}</span>
+                          <span className="text-[10px] text-slate-600">{order.id}</span>
+                        </div>
+                        <span className="text-xs font-bold text-emerald-500">${order.totalPrice}</span>
                       </div>
-                    )}
-                 </div>
-              </Card>
-            </motion.div>
+                    ))}
+                    {orders.length === 0 && <p className="text-slate-600 text-center py-10">No recent orders</p>}
+                  </div>
+                </Card>
+              </motion.div>
+            )}
+
+            {activeTab === 'inventory' && (
+              <motion.div
+                key="inventory"
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, scale: 0.98 }}
+              >
+                <Card className="overflow-hidden p-0">
+                  <table className="w-full text-left border-collapse">
+                    <thead>
+                      <tr className="border-b border-white/5 bg-white/[0.02]">
+                        <th className="p-6 text-[10px] font-bold uppercase tracking-widest text-slate-500">Product</th>
+                        <th className="p-6 text-[10px] font-bold uppercase tracking-widest text-slate-500">SKU</th>
+                        <th className="p-6 text-[10px] font-bold uppercase tracking-widest text-slate-500">Price</th>
+                        <th className="p-6 text-[10px] font-bold uppercase tracking-widest text-slate-500">Stock</th>
+                        <th className="p-6 text-[10px] font-bold uppercase tracking-widest text-slate-500">Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {filteredProducts.map(product => (
+                        <tr key={product.id} className="border-b border-white/5 hover:bg-white/[0.01] transition-colors">
+                          <td className="p-6 text-sm font-bold text-white">{product.name}</td>
+                          <td className="p-6 text-xs text-slate-500 font-mono">{product.sku}</td>
+                          <td className="p-6 text-sm text-slate-300">${product.price}</td>
+                          <td className="p-6">
+                            <span className={cn(
+                              "px-3 py-1 rounded-full text-[10px] font-bold",
+                              product.stockLevel <= product.lowStockThreshold ? "bg-rose-500/10 text-rose-500" : "bg-emerald-500/10 text-emerald-500"
+                            )}>
+                              {product.stockLevel} units
+                            </span>
+                          </td>
+                          <td className="p-6">
+                            <button className="p-2 hover:bg-white/5 rounded-lg transition-colors text-slate-600 hover:text-white">
+                              <Settings className="w-4 h-4" />
+                            </button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                  {filteredProducts.length === 0 && (
+                    <div className="p-20 text-center">
+                      <p className="text-slate-500">No products found matching "{searchQuery}"</p>
+                    </div>
+                  )}
+                </Card>
+              </motion.div>
+            )}
+
+            {activeTab === 'orders' && (
+              <motion.div
+                key="orders"
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, scale: 0.98 }}
+              >
+                <Card className="overflow-hidden p-0">
+                  <table className="w-full text-left border-collapse">
+                    <thead>
+                      <tr className="border-b border-white/5 bg-white/[0.02]">
+                        <th className="p-6 text-[10px] font-bold uppercase tracking-widest text-slate-500">Order ID</th>
+                        <th className="p-6 text-[10px] font-bold uppercase tracking-widest text-slate-500">Customer</th>
+                        <th className="p-6 text-[10px] font-bold uppercase tracking-widest text-slate-500">Status</th>
+                        <th className="p-6 text-[10px] font-bold uppercase tracking-widest text-slate-500">Total</th>
+                        <th className="p-6 text-[10px] font-bold uppercase tracking-widest text-slate-500">Date</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {filteredOrders.map(order => (
+                        <tr key={order.id} className="border-b border-white/5 hover:bg-white/[0.01] transition-colors">
+                          <td className="p-6 text-xs font-mono text-blue-400">{order.id}</td>
+                          <td className="p-6 text-sm font-bold text-white">{order.customerName}</td>
+                          <td className="p-6">
+                            <span className={cn(
+                              "px-3 py-1 rounded-full text-[10px] font-bold",
+                              order.status === 'PENDING' ? "bg-amber-500/10 text-amber-500" : 
+                              order.status === 'SHIPPED' ? "bg-blue-500/10 text-blue-500" :
+                              "bg-emerald-500/10 text-emerald-500"
+                            )}>
+                              {order.status}
+                            </span>
+                          </td>
+                          <td className="p-6 text-sm text-slate-300 font-bold">${order.totalPrice}</td>
+                          <td className="p-6 text-xs text-slate-600">{new Date(order.createdAt).toLocaleDateString()}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </Card>
+              </motion.div>
+            )}
           </AnimatePresence>
         </div>
       </main>
+
+      {/* Add Record Modal */}
+      <AnimatePresence>
+        {showAddModal && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-6">
+            <motion.div 
+              initial={{ opacity: 0 }} 
+              animate={{ opacity: 1 }} 
+              exit={{ opacity: 0 }}
+              onClick={() => setShowAddModal(false)}
+              className="absolute inset-0 bg-slate-950/80 backdrop-blur-sm"
+            />
+            <motion.div 
+              initial={{ scale: 0.9, opacity: 0, y: 20 }}
+              animate={{ scale: 1, opacity: 1, y: 0 }}
+              exit={{ scale: 0.9, opacity: 0, y: 20 }}
+              className="relative w-full max-w-lg bg-slate-900 border border-slate-800 rounded-3xl p-8 shadow-2xl"
+            >
+              <div className="flex justify-between items-center mb-8">
+                <h3 className="text-xl font-bold text-white">Add New {modalType === 'product' ? 'Product' : 'Order'}</h3>
+                <button onClick={() => setShowAddModal(false)} className="p-2 hover:bg-white/5 rounded-xl transition-colors">
+                  <X className="w-5 h-5 text-slate-500" />
+                </button>
+              </div>
+
+              <form className="space-y-6" onSubmit={async (e) => { 
+                e.preventDefault(); 
+                const formData = new FormData(e.currentTarget);
+                const headers = getHeaders();
+                
+                try {
+                  if (modalType === 'product') {
+                    const res = await fetch(`${API_BASE}/inventory`, {
+                      method: 'POST',
+                      headers,
+                      body: JSON.stringify({
+                        name: formData.get('name'),
+                        sku: (formData.get('sku') as string) || `SKU-${Math.floor(Math.random()*1000)}`,
+                        price: formData.get('price'),
+                        stockLevel: formData.get('stock'),
+                        description: 'New product'
+                      })
+                    });
+                    if (res.ok) {
+                      const newProduct = await res.json();
+                      setProducts([newProduct, ...products]);
+                    }
+                  } else {
+                    const res = await fetch(`${API_BASE}/orders`, {
+                      method: 'POST',
+                      headers,
+                      body: JSON.stringify({
+                        customerName: formData.get('customer'),
+                        items: [
+                          { productId: products[0]?.id, quantity: 1 } 
+                        ]
+                      })
+                    });
+                    if (res.ok) {
+                      const newOrder = await res.json();
+                      setOrders([newOrder, ...orders]);
+                    }
+                  }
+                } catch (err) {
+                  console.error('Creation failed', err);
+                }
+                setShowAddModal(false); 
+              }}>
+                {modalType === 'product' ? (
+                  <>
+                    <div className="space-y-2">
+                      <label className="text-[10px] font-bold uppercase tracking-widest text-slate-500">Product Name</label>
+                      <input name="name" type="text" required className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-3 text-sm text-white focus:outline-none focus:ring-2 focus:ring-blue-500/50" placeholder="e.g. Pro Headphones" />
+                    </div>
+                    <div className="grid grid-cols-2 gap-4">
+                      <div className="space-y-2">
+                        <label className="text-[10px] font-bold uppercase tracking-widest text-slate-500">Price ($)</label>
+                        <input name="price" type="number" required step="0.01" className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-3 text-sm text-white focus:outline-none focus:ring-2 focus:ring-blue-500/50" placeholder="99.99" />
+                      </div>
+                      <div className="space-y-2">
+                        <label className="text-[10px] font-bold uppercase tracking-widest text-slate-500">Stock</label>
+                        <input name="stock" type="number" required className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-3 text-sm text-white focus:outline-none focus:ring-2 focus:ring-blue-500/50" placeholder="100" />
+                      </div>
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    <div className="space-y-2">
+                      <label className="text-[10px] font-bold uppercase tracking-widest text-slate-500">Customer Name</label>
+                      <input name="customer" type="text" required className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-3 text-sm text-white focus:outline-none focus:ring-2 focus:ring-blue-500/50" placeholder="John Doe" />
+                    </div>
+                    <div className="space-y-2">
+                      <label className="text-[10px] font-bold uppercase tracking-widest text-slate-500">Total Price ($)</label>
+                      <input name="total" type="number" required step="0.01" className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-3 text-sm text-white focus:outline-none focus:ring-2 focus:ring-blue-500/50" placeholder="249.50" />
+                    </div>
+                  </>
+                )}
+                
+                <button 
+                  type="submit"
+                  className="w-full py-4 bg-blue-600 hover:bg-blue-500 text-white font-bold rounded-2xl shadow-lg shadow-blue-600/20 mt-4 active:scale-95 transition-all"
+                >
+                  Create {modalType === 'product' ? 'Product' : 'Order'}
+                </button>
+              </form>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
 
       <style>{`
         .custom-scrollbar::-webkit-scrollbar { width: 4px; }
