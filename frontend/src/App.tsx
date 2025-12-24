@@ -12,7 +12,8 @@ import {
   AlertTriangle,
   Zap,
   X,
-  RefreshCcw
+  RefreshCcw,
+  Users
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 const Card = ({ children, className }: { children: React.ReactNode, className?: string }) => (
@@ -67,6 +68,7 @@ const App: React.FC = () => {
   const [products, setProducts] = useState<Product[]>([]);
   const [orders, setOrders] = useState<Order[]>([]);
   const [notifications, setNotifications] = useState<Notification[]>([]);
+  const [users, setUsers] = useState<User[]>([]);
   const [user, setUser] = useState<User | null>(null);
 
   const getHeaders = () => {
@@ -86,23 +88,24 @@ const App: React.FC = () => {
     try {
       const headers = getHeaders();
       
-      // Fetch User Profile
       const meRes = await fetch(`${API_BASE}/auth/me`, { headers });
-      if (meRes.ok) {
-        setUser(await meRes.json());
+      if (meRes.status === 401) {
+        // Handle unauthorized
+        return;
       }
+      if (meRes.ok) setUser(await meRes.json());
 
-      // Fetch Products
       const prodRes = await fetch(`${API_BASE}/inventory`, { headers });
       if (prodRes.ok) setProducts(await prodRes.json());
 
-      // Fetch Orders
       const orderRes = await fetch(`${API_BASE}/orders`, { headers });
       if (orderRes.ok) setOrders(await orderRes.json());
 
-      // Fetch Notifications
       const notifRes = await fetch(`${API_BASE}/notifications`, { headers });
       if (notifRes.ok) setNotifications(await notifRes.json());
+      
+      const usersRes = await fetch(`${API_BASE}/auth/users`, { headers });
+      if (usersRes.ok) setUsers(await usersRes.json());
 
     } catch (error) {
       console.error('Failed to fetch data', error);
@@ -122,6 +125,7 @@ const App: React.FC = () => {
     { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
     { id: 'inventory', label: 'Inventory', icon: Package },
     { id: 'orders', label: 'Orders', icon: ShoppingCart },
+    { id: 'users', label: 'Users', icon: Users },
   ];
 
   const stats = useMemo(() => [
@@ -140,6 +144,19 @@ const App: React.FC = () => {
     o.customerName.toLowerCase().includes(searchQuery.toLowerCase()) || 
     o.id.toLowerCase().includes(searchQuery.toLowerCase())
   );
+
+  const handleMarkAsRead = async (id: string) => {
+    try {
+      const headers = getHeaders();
+      await fetch(`${API_BASE}/notifications/${id}/read`, { 
+        method: 'PATCH',
+        headers
+      });
+      setNotifications(prev => prev.map(n => n.id === id ? { ...n, isRead: true } : n));
+    } catch (error) {
+      console.error('Failed to mark notification as read', error);
+    }
+  };
 
   const handleSignOut = async () => {
     try {
@@ -275,11 +292,28 @@ const App: React.FC = () => {
             >
               <RefreshCcw className={cn("w-4 h-4", isSyncing && "animate-spin")} />
             </button>
-            <button className="p-2 text-slate-500 hover:text-white transition-colors relative">
+            <button className="p-2 text-slate-500 hover:text-white transition-colors relative group">
               <Bell className="w-4 h-4" />
               {notifications.filter(n => !n.isRead).length > 0 && (
                 <span className="absolute top-2 right-2 w-1.5 h-1.5 bg-blue-500 rounded-full"></span>
               )}
+              {/* Simple dropdown for demo purposes */}
+              <div className="absolute right-0 top-full mt-2 w-64 bg-slate-900 border border-slate-800 rounded-xl shadow-xl p-2 hidden group-hover:block transition-all z-50">
+                <div className="text-xs font-bold text-slate-400 mb-2 px-2 uppercase tracking-wider">Notifications</div>
+                {notifications.length === 0 ? (
+                  <div className="text-xs text-slate-500 px-2">No notifications</div>
+                ) : (
+                  notifications.map(n => (
+                    <div 
+                      key={n.id} 
+                      onClick={() => handleMarkAsRead(n.id)}
+                      className={`text-xs p-2 rounded-lg mb-1 cursor-pointer hover:bg-white/5 transition-colors ${n.isRead ? 'opacity-50' : 'font-semibold text-white'}`}
+                    >
+                      {n.message}
+                    </div>
+                  ))
+                )}
+              </div>
             </button>
             <div className="h-8 w-px bg-white/5 mx-2" />
             <div className="flex items-center gap-3 cursor-pointer group">
@@ -490,6 +524,44 @@ const App: React.FC = () => {
                 </Card>
               </motion.div>
             )}
+            {activeTab === 'users' && (
+              <motion.div
+                key="users"
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, scale: 0.98 }}
+              >
+                <Card className="overflow-hidden p-0">
+                  <table className="w-full text-left border-collapse">
+                    <thead>
+                      <tr className="border-b border-white/5 bg-white/[0.02]">
+                        <th className="p-6 text-[10px] font-bold uppercase tracking-widest text-slate-500">User ID</th>
+                        <th className="p-6 text-[10px] font-bold uppercase tracking-widest text-slate-500">Email</th>
+                        <th className="p-6 text-[10px] font-bold uppercase tracking-widest text-slate-500">Role</th>
+                        <th className="p-6 text-[10px] font-bold uppercase tracking-widest text-slate-500">Joined</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {users.map(u => (
+                        <tr key={u.id} className="border-b border-white/5 hover:bg-white/[0.01] transition-colors">
+                          <td className="p-6 text-xs font-mono text-blue-400">{u.id.substring(0, 8)}...</td>
+                          <td className="p-6 text-sm font-bold text-white">{u.email}</td>
+                          <td className="p-6">
+                            <span className={cn(
+                              "px-3 py-1 rounded-full text-[10px] font-bold",
+                              u.role === 'ADMIN' ? "bg-purple-500/10 text-purple-500" : "bg-slate-500/10 text-slate-500"
+                            )}>
+                              {u.role}
+                            </span>
+                          </td>
+                          <td className="p-6 text-xs text-slate-600">Active</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </Card>
+              </motion.div>
+            )}
           </AnimatePresence>
         </div>
       </main>
@@ -541,19 +613,23 @@ const App: React.FC = () => {
                       setProducts([newProduct, ...products]);
                     }
                   } else {
+                    const productId = formData.get('productId') as string;
+                    const quantity = parseInt(formData.get('quantity') as string);
+
                     const res = await fetch(`${API_BASE}/orders`, {
                       method: 'POST',
                       headers,
                       body: JSON.stringify({
                         customerName: formData.get('customer'),
                         items: [
-                          { productId: products[0]?.id, quantity: 1 } 
+                          { productId, quantity } 
                         ]
                       })
                     });
                     if (res.ok) {
                       const newOrder = await res.json();
                       setOrders([newOrder, ...orders]);
+                      fetchData(); // Refresh to update stocks
                     }
                   }
                 } catch (err) {
@@ -585,8 +661,16 @@ const App: React.FC = () => {
                       <input name="customer" type="text" required className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-3 text-sm text-white focus:outline-none focus:ring-2 focus:ring-blue-500/50" placeholder="John Doe" />
                     </div>
                     <div className="space-y-2">
-                      <label className="text-[10px] font-bold uppercase tracking-widest text-slate-500">Total Price ($)</label>
-                      <input name="total" type="number" required step="0.01" className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-3 text-sm text-white focus:outline-none focus:ring-2 focus:ring-blue-500/50" placeholder="249.50" />
+                      <label className="text-[10px] font-bold uppercase tracking-widest text-slate-500">Product</label>
+                      <select name="productId" required className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-3 text-sm text-white focus:outline-none focus:ring-2 focus:ring-blue-500/50 appearance-none cursor-pointer">
+                        {products.map(p => (
+                          <option key={p.id} value={p.id}>{p.name} - ${p.price}</option>
+                        ))}
+                      </select>
+                    </div>
+                    <div className="space-y-2">
+                      <label className="text-[10px] font-bold uppercase tracking-widest text-slate-500">Quantity</label>
+                      <input name="quantity" type="number" defaultValue="1" min="1" required className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-3 text-sm text-white focus:outline-none focus:ring-2 focus:ring-blue-500/50" />
                     </div>
                   </>
                 )}
