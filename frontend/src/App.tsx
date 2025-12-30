@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import { Routes, Route, useNavigate, Navigate } from 'react-router-dom';
 import { 
   LayoutDashboard, 
   Package, 
@@ -7,7 +8,7 @@ import {
   Plus, 
   Search,
   Bell,
-  Settings,
+  Settings as SettingsIcon,
   TrendingUp,
   AlertTriangle,
   Zap,
@@ -16,12 +17,18 @@ import {
   Users
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
+import { cn } from './utils/cn';
+
+// Pages
+import ForgotPassword from './pages/ForgotPassword';
+import ResetPassword from './pages/ResetPassword';
+import Settings from './pages/Settings';
+
 const Card = ({ children, className }: { children: React.ReactNode, className?: string }) => (
   <div className={cn("p-6 rounded-3xl border transition-all duration-500", className)}>
     {children}
   </div>
 );
-import { cn } from './utils/cn';
 
 interface Product {
   id: string;
@@ -57,29 +64,30 @@ interface User {
 
 const API_BASE = 'http://localhost:3001/api';
 
-const App: React.FC = () => {
+const MainApp: React.FC = () => {
   const [activeTab, setActiveTab] = useState('dashboard');
   const [scrolled, setScrolled] = useState(false);
   const [isHeliumMode, setIsHeliumMode] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [isSyncing, setIsSyncing] = useState(false);
+  const [showSettings, setShowSettings] = useState(false);
   
-  // Data State
   const [products, setProducts] = useState<Product[]>([]);
   const [orders, setOrders] = useState<Order[]>([]);
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [users, setUsers] = useState<User[]>([]);
   const [user, setUser] = useState<User | null>(null);
 
-  const getHeaders = () => {
+  const navigate = useNavigate();
+
+  const getHeaders = useCallback(() => {
     const token = localStorage.getItem('accessToken');
     return {
       'Content-Type': 'application/json',
       ...(token ? { 'Authorization': `Bearer ${token}` } : {})
     };
-  };
+  }, []);
 
-  // Modal State
   const [showAddModal, setShowAddModal] = useState(false);
   const [modalType, setModalType] = useState<'product' | 'order'>('product');
 
@@ -90,7 +98,8 @@ const App: React.FC = () => {
       
       const meRes = await fetch(`${API_BASE}/auth/me`, { headers });
       if (meRes.status === 401) {
-        // Handle unauthorized
+        localStorage.removeItem('accessToken');
+        navigate('/login');
         return;
       }
       if (meRes.ok) setUser(await meRes.json());
@@ -112,7 +121,7 @@ const App: React.FC = () => {
     } finally {
       setIsSyncing(false);
     }
-  }, []);
+  }, [getHeaders, navigate]);
 
   useEffect(() => {
     const handleScroll = () => setScrolled(window.scrollY > 20);
@@ -169,9 +178,13 @@ const App: React.FC = () => {
     } finally {
       localStorage.removeItem('accessToken');
       localStorage.removeItem('refreshToken');
-      window.location.reload();
+      navigate('/login');
     }
   };
+
+  if (showSettings) {
+    return <Settings user={user} onUpdate={fetchData} onBack={() => setShowSettings(false)} />;
+  }
 
   return (
     <div className={cn(
@@ -246,7 +259,7 @@ const App: React.FC = () => {
             className="w-full h-10 flex items-center gap-4 px-3 text-rose-500 hover:text-rose-400 transition-colors"
           >
             <LogOut className="w-5 h-5" />
-            <span className={cn(isHeliumMode && "opacity-0 lg:opacity-100 transition-opacity whitespace-nowrap", "text-sm font-medium")}>Sign Out</span>
+            <span className={cn(isHeliumMode && "opacity-0 lg:opacity-100 transition-opacity whitespace-nowrap", "text-sm font-medium font-sans")}>Sign Out</span>
           </button>
         </div>
       </aside>
@@ -297,17 +310,16 @@ const App: React.FC = () => {
               {notifications.filter(n => !n.isRead).length > 0 && (
                 <span className="absolute top-2 right-2 w-1.5 h-1.5 bg-blue-500 rounded-full"></span>
               )}
-              {/* Simple dropdown for demo purposes */}
               <div className="absolute right-0 top-full mt-2 w-64 bg-slate-900 border border-slate-800 rounded-xl shadow-xl p-2 hidden group-hover:block transition-all z-50">
                 <div className="text-xs font-bold text-slate-400 mb-2 px-2 uppercase tracking-wider">Notifications</div>
                 {notifications.length === 0 ? (
-                  <div className="text-xs text-slate-500 px-2">No notifications</div>
+                  <div className="text-xs text-slate-500 px-2 font-sans">No notifications</div>
                 ) : (
                   notifications.map(n => (
                     <div 
                       key={n.id} 
                       onClick={() => handleMarkAsRead(n.id)}
-                      className={`text-xs p-2 rounded-lg mb-1 cursor-pointer hover:bg-white/5 transition-colors ${n.isRead ? 'opacity-50' : 'font-semibold text-white'}`}
+                      className={`text-xs p-2 rounded-lg mb-1 cursor-pointer hover:bg-white/5 transition-colors font-sans ${n.isRead ? 'opacity-50' : 'font-semibold text-white'}`}
                     >
                       {n.message}
                     </div>
@@ -316,29 +328,29 @@ const App: React.FC = () => {
               </div>
             </button>
             <div className="h-8 w-px bg-white/5 mx-2" />
-            <div className="flex items-center gap-3 cursor-pointer group">
+            <div onClick={() => setShowSettings(true)} className="flex items-center gap-3 cursor-pointer group">
                <div className="w-8 h-8 rounded-full bg-slate-800 border border-slate-700 flex items-center justify-center text-[10px] font-bold text-white group-hover:border-blue-500/50 transition-colors">
                  {user?.email[0].toUpperCase() || 'A'}
                </div>
-               {!isHeliumMode && <span className="text-xs font-bold">{user?.role || 'Admin'}</span>}
+               {!isHeliumMode && <span className="text-xs font-bold font-sans">{user?.role || 'Admin'}</span>}
             </div>
           </div>
         </header>
 
-        <div className="p-10 max-w-7xl mx-auto w-full space-y-12">
+        <div className="p-10 w-full space-y-12">
           {/* Hero */}
           <motion.div 
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             className="flex flex-col gap-2"
           >
-            {isHeliumMode && <span className="text-white/30 text-[10px] uppercase tracking-[0.3em] font-black">Nexus Intelligence</span>}
+            {isHeliumMode && <span className="text-white/30 text-[10px] uppercase tracking-[0.3em] font-black font-sans">Nexus Intelligence</span>}
             <div className="flex flex-col md:flex-row md:items-end justify-between gap-6">
               <div>
-                <h1 className={cn("font-bold tracking-tighter transition-all", isHeliumMode ? "text-5xl text-white" : "text-4xl text-slate-100")}>
-                  {activeTab.charAt(0).toUpperCase() + activeTab.slice(1)} {isHeliumMode && <span className="text-white/20">Control</span>}
+                <h1 className={cn("font-bold tracking-tighter transition-all font-sans", isHeliumMode ? "text-5xl text-white" : "text-4xl text-slate-100 uppercase")}>
+                  {activeTab} {isHeliumMode && <span className="text-white/20">Control</span>}
                 </h1>
-                <p className="mt-1 text-slate-500">Operational overview of your supply chain.</p>
+                <p className="mt-1 text-slate-500 font-sans">Operational overview of your supply chain.</p>
               </div>
               {(activeTab === 'inventory' || activeTab === 'orders') && (
                 <button 
@@ -347,9 +359,9 @@ const App: React.FC = () => {
                     setShowAddModal(true);
                   }}
                   className={cn(
-                    "px-6 py-3 rounded-2xl font-bold transition-all flex items-center gap-2 active:scale-95 shadow-xl",
+                    "px-6 py-3 rounded-2xl font-bold transition-all flex items-center gap-2 active:scale-95 shadow-xl font-sans",
                     isHeliumMode 
-                      ? "bg-white text-black hover:bg-slate-200" 
+                      ? "bg-white text-black hover:bg-slate-200 uppercase" 
                       : "bg-blue-600 text-white hover:bg-blue-500 shadow-blue-600/20"
                     )}>
                   <Plus className="w-5 h-5" />
@@ -369,7 +381,7 @@ const App: React.FC = () => {
                 transition={{ delay: i * 0.1 }}
               >
                 <Card className={cn(
-                  "group",
+                  "group h-full",
                   isHeliumMode 
                     ? "bg-white/[0.01] border-white/[0.04] hover:bg-white/[0.02]" 
                     : "bg-slate-900/50 border-slate-800 hover:border-slate-700"
@@ -379,10 +391,10 @@ const App: React.FC = () => {
                       <stat.icon className={cn("w-5 h-5", stat.color)} />
                     </div>
                   </div>
-                  <h3 className="text-slate-500 text-[10px] font-semibold uppercase tracking-widest">{stat.label}</h3>
+                  <h3 className="text-slate-500 text-[10px] font-semibold uppercase tracking-widest font-sans">{stat.label}</h3>
                   <div className="flex items-baseline justify-between mt-1">
-                    <p className="text-3xl font-bold text-white tracking-tighter">{stat.value}</p>
-                    <span className={cn("text-[10px] font-bold px-2 py-0.5 rounded-full", 
+                    <p className="text-3xl font-bold text-white tracking-tighter font-sans">{stat.value}</p>
+                    <span className={cn("text-[10px] font-bold px-2 py-0.5 rounded-full font-sans", 
                       isHeliumMode ? "bg-white/5 text-slate-400" : "bg-slate-800 " + stat.color
                     )}>{stat.trend}</span>
                   </div>
@@ -391,7 +403,6 @@ const App: React.FC = () => {
             ))}
           </div>
 
-          {/* Main Content Sections */}
           <AnimatePresence mode="wait">
             {activeTab === 'dashboard' && (
               <motion.div
@@ -405,28 +416,28 @@ const App: React.FC = () => {
                   <div className="w-20 h-20 rounded-full bg-blue-600/10 flex items-center justify-center mb-6">
                     <LayoutDashboard className="w-10 h-10 text-blue-500" />
                   </div>
-                  <h3 className="text-2xl font-bold text-white mb-2">Welcome Back, Admin</h3>
-                  <p className="text-slate-500 max-w-sm">Everything looks optimal. You have {products.filter(p => p.stockLevel <= p.lowStockThreshold).length} items requiring attention.</p>
+                  <h3 className="text-2xl font-bold text-white mb-2 font-sans">Welcome Back, {user?.role || 'Admin'}</h3>
+                  <p className="text-slate-500 max-w-sm font-sans">Everything looks optimal. You have {products.filter(p => p.stockLevel <= p.lowStockThreshold).length} items requiring attention.</p>
                   <button 
                     onClick={() => setActiveTab('inventory')}
-                    className="mt-8 px-8 py-3 bg-slate-800 hover:bg-slate-700 text-white rounded-2xl font-bold border border-slate-700 transition-all"
+                    className="mt-8 px-8 py-3 bg-slate-800 hover:bg-slate-700 text-white rounded-2xl font-bold border border-slate-700 transition-all font-sans"
                   >
                     Manage Inventory
                   </button>
                 </Card>
                 <Card className="p-8 h-[400px]">
-                  <h3 className="font-bold text-white mb-6 uppercase tracking-widest text-xs">Recent Orders</h3>
+                  <h3 className="font-bold text-white mb-6 uppercase tracking-widest text-xs font-sans">Recent Orders</h3>
                   <div className="space-y-4 overflow-y-auto max-h-[280px] custom-scrollbar">
                     {orders.slice(0, 5).map(order => (
-                      <div key={order.id} className="flex items-center justify-between p-4 rounded-2xl bg-white/[0.02] border border-white/5">
+                      <div key={order.id} className="flex items-center justify-between p-4 rounded-2xl bg-white/[0.02] border border-white/5 font-sans">
                         <div className="flex flex-col">
                           <span className="text-xs font-bold text-white">{order.customerName}</span>
-                          <span className="text-[10px] text-slate-600">{order.id}</span>
+                          <span className="text-[10px] text-slate-600 uppercase">{order.id.substring(0,8)}</span>
                         </div>
                         <span className="text-xs font-bold text-emerald-500">${order.totalPrice}</span>
                       </div>
                     ))}
-                    {orders.length === 0 && <p className="text-slate-600 text-center py-10">No recent orders</p>}
+                    {orders.length === 0 && <p className="text-slate-600 text-center py-10 font-sans">No recent orders</p>}
                   </div>
                 </Card>
               </motion.div>
@@ -440,7 +451,7 @@ const App: React.FC = () => {
                 exit={{ opacity: 0, scale: 0.98 }}
               >
                 <Card className="overflow-hidden p-0">
-                  <table className="w-full text-left border-collapse">
+                  <table className="w-full text-left border-collapse font-sans">
                     <thead>
                       <tr className="border-b border-white/5 bg-white/[0.02]">
                         <th className="p-6 text-[10px] font-bold uppercase tracking-widest text-slate-500">Product</th>
@@ -453,12 +464,12 @@ const App: React.FC = () => {
                     <tbody>
                       {filteredProducts.map(product => (
                         <tr key={product.id} className="border-b border-white/5 hover:bg-white/[0.01] transition-colors">
-                          <td className="p-6 text-sm font-bold text-white">{product.name}</td>
-                          <td className="p-6 text-xs text-slate-500 font-mono">{product.sku}</td>
+                          <td className="p-6 text-sm font-bold text-white uppercase tracking-tight">{product.name}</td>
+                          <td className="p-6 text-xs text-slate-500 font-mono uppercase">{product.sku}</td>
                           <td className="p-6 text-sm text-slate-300">${product.price}</td>
                           <td className="p-6">
                             <span className={cn(
-                              "px-3 py-1 rounded-full text-[10px] font-bold",
+                              "px-3 py-1 rounded-full text-[10px] font-bold uppercase",
                               product.stockLevel <= product.lowStockThreshold ? "bg-rose-500/10 text-rose-500" : "bg-emerald-500/10 text-emerald-500"
                             )}>
                               {product.stockLevel} units
@@ -466,7 +477,7 @@ const App: React.FC = () => {
                           </td>
                           <td className="p-6">
                             <button className="p-2 hover:bg-white/5 rounded-lg transition-colors text-slate-600 hover:text-white">
-                              <Settings className="w-4 h-4" />
+                              <SettingsIcon className="w-4 h-4" />
                             </button>
                           </td>
                         </tr>
@@ -475,7 +486,7 @@ const App: React.FC = () => {
                   </table>
                   {filteredProducts.length === 0 && (
                     <div className="p-20 text-center">
-                      <p className="text-slate-500">No products found matching "{searchQuery}"</p>
+                      <p className="text-slate-500 font-sans font-bold uppercase tracking-widest">No products found matching "{searchQuery}"</p>
                     </div>
                   )}
                 </Card>
@@ -490,7 +501,7 @@ const App: React.FC = () => {
                 exit={{ opacity: 0, scale: 0.98 }}
               >
                 <Card className="overflow-hidden p-0">
-                  <table className="w-full text-left border-collapse">
+                  <table className="w-full text-left border-collapse font-sans">
                     <thead>
                       <tr className="border-b border-white/5 bg-white/[0.02]">
                         <th className="p-6 text-[10px] font-bold uppercase tracking-widest text-slate-500">Order ID</th>
@@ -503,11 +514,11 @@ const App: React.FC = () => {
                     <tbody>
                       {filteredOrders.map(order => (
                         <tr key={order.id} className="border-b border-white/5 hover:bg-white/[0.01] transition-colors">
-                          <td className="p-6 text-xs font-mono text-blue-400">{order.id}</td>
-                          <td className="p-6 text-sm font-bold text-white">{order.customerName}</td>
+                          <td className="p-6 text-xs font-mono text-blue-400 uppercase">{order.id.substring(0,8)}</td>
+                          <td className="p-6 text-sm font-bold text-white uppercase">{order.customerName}</td>
                           <td className="p-6">
                             <span className={cn(
-                              "px-3 py-1 rounded-full text-[10px] font-bold",
+                              "px-3 py-1 rounded-full text-[10px] font-bold uppercase",
                               order.status === 'PENDING' ? "bg-amber-500/10 text-amber-500" : 
                               order.status === 'SHIPPED' ? "bg-blue-500/10 text-blue-500" :
                               "bg-emerald-500/10 text-emerald-500"
@@ -515,8 +526,8 @@ const App: React.FC = () => {
                               {order.status}
                             </span>
                           </td>
-                          <td className="p-6 text-sm text-slate-300 font-bold">${order.totalPrice}</td>
-                          <td className="p-6 text-xs text-slate-600">{new Date(order.createdAt).toLocaleDateString()}</td>
+                          <td className="p-6 text-sm text-slate-300 font-bold font-sans">${order.totalPrice}</td>
+                          <td className="p-6 text-xs text-slate-600 font-sans">{new Date(order.createdAt).toLocaleDateString()}</td>
                         </tr>
                       ))}
                     </tbody>
@@ -524,6 +535,7 @@ const App: React.FC = () => {
                 </Card>
               </motion.div>
             )}
+
             {activeTab === 'users' && (
               <motion.div
                 key="users"
@@ -532,7 +544,7 @@ const App: React.FC = () => {
                 exit={{ opacity: 0, scale: 0.98 }}
               >
                 <Card className="overflow-hidden p-0">
-                  <table className="w-full text-left border-collapse">
+                  <table className="w-full text-left border-collapse font-sans">
                     <thead>
                       <tr className="border-b border-white/5 bg-white/[0.02]">
                         <th className="p-6 text-[10px] font-bold uppercase tracking-widest text-slate-500">User ID</th>
@@ -544,17 +556,17 @@ const App: React.FC = () => {
                     <tbody>
                       {users.map(u => (
                         <tr key={u.id} className="border-b border-white/5 hover:bg-white/[0.01] transition-colors">
-                          <td className="p-6 text-xs font-mono text-blue-400">{u.id.substring(0, 8)}...</td>
+                          <td className="p-6 text-xs font-mono text-blue-400 uppercase">{u.id.substring(0, 8)}</td>
                           <td className="p-6 text-sm font-bold text-white">{u.email}</td>
                           <td className="p-6">
                             <span className={cn(
-                              "px-3 py-1 rounded-full text-[10px] font-bold",
+                              "px-3 py-1 rounded-full text-[10px] font-bold uppercase",
                               u.role === 'ADMIN' ? "bg-purple-500/10 text-purple-500" : "bg-slate-500/10 text-slate-500"
                             )}>
                               {u.role}
                             </span>
                           </td>
-                          <td className="p-6 text-xs text-slate-600">Active</td>
+                          <td className="p-6 text-xs text-slate-600 uppercase">Active</td>
                         </tr>
                       ))}
                     </tbody>
@@ -581,10 +593,10 @@ const App: React.FC = () => {
               initial={{ scale: 0.9, opacity: 0, y: 20 }}
               animate={{ scale: 1, opacity: 1, y: 0 }}
               exit={{ scale: 0.9, opacity: 0, y: 20 }}
-              className="relative w-full max-w-lg bg-slate-900 border border-slate-800 rounded-3xl p-8 shadow-2xl"
+              className="relative w-full max-w-lg bg-slate-900 border border-slate-800 rounded-3xl p-8 shadow-2xl font-sans"
             >
               <div className="flex justify-between items-center mb-8">
-                <h3 className="text-xl font-bold text-white">Add New {modalType === 'product' ? 'Product' : 'Order'}</h3>
+                <h3 className="text-xl font-bold text-white uppercase tracking-tight">Add New {modalType === 'product' ? 'Product' : 'Order'}</h3>
                 <button onClick={() => setShowAddModal(false)} className="p-2 hover:bg-white/5 rounded-xl transition-colors">
                   <X className="w-5 h-5 text-slate-500" />
                 </button>
@@ -629,7 +641,7 @@ const App: React.FC = () => {
                     if (res.ok) {
                       const newOrder = await res.json();
                       setOrders([newOrder, ...orders]);
-                      fetchData(); // Refresh to update stocks
+                      fetchData(); 
                     }
                   }
                 } catch (err) {
@@ -640,16 +652,16 @@ const App: React.FC = () => {
                 {modalType === 'product' ? (
                   <>
                     <div className="space-y-2">
-                      <label className="text-[10px] font-bold uppercase tracking-widest text-slate-500">Product Name</label>
-                      <input name="name" type="text" required className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-3 text-sm text-white focus:outline-none focus:ring-2 focus:ring-blue-500/50" placeholder="e.g. Pro Headphones" />
+                      <label className="text-[10px] font-bold uppercase tracking-widest text-slate-500 ml-1">Product Name</label>
+                      <input name="name" type="text" required className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-3 text-sm text-white focus:outline-none focus:ring-2 focus:ring-blue-500/50 uppercase" placeholder="e.g. Pro Headphones" />
                     </div>
                     <div className="grid grid-cols-2 gap-4">
                       <div className="space-y-2">
-                        <label className="text-[10px] font-bold uppercase tracking-widest text-slate-500">Price ($)</label>
+                        <label className="text-[10px] font-bold uppercase tracking-widest text-slate-500 ml-1">Price ($)</label>
                         <input name="price" type="number" required step="0.01" className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-3 text-sm text-white focus:outline-none focus:ring-2 focus:ring-blue-500/50" placeholder="99.99" />
                       </div>
                       <div className="space-y-2">
-                        <label className="text-[10px] font-bold uppercase tracking-widest text-slate-500">Stock</label>
+                        <label className="text-[10px] font-bold uppercase tracking-widest text-slate-500 ml-1">Stock</label>
                         <input name="stock" type="number" required className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-3 text-sm text-white focus:outline-none focus:ring-2 focus:ring-blue-500/50" placeholder="100" />
                       </div>
                     </div>
@@ -657,27 +669,27 @@ const App: React.FC = () => {
                 ) : (
                   <>
                     <div className="space-y-2">
-                      <label className="text-[10px] font-bold uppercase tracking-widest text-slate-500">Customer Name</label>
-                      <input name="customer" type="text" required className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-3 text-sm text-white focus:outline-none focus:ring-2 focus:ring-blue-500/50" placeholder="John Doe" />
+                      <label className="text-[10px] font-bold uppercase tracking-widest text-slate-500 ml-1">Customer Name</label>
+                      <input name="customer" type="text" required className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-3 text-sm text-white focus:outline-none focus:ring-2 focus:ring-blue-500/50 uppercase font-sans" placeholder="John Doe" />
                     </div>
                     <div className="space-y-2">
-                      <label className="text-[10px] font-bold uppercase tracking-widest text-slate-500">Product</label>
-                      <select name="productId" required className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-3 text-sm text-white focus:outline-none focus:ring-2 focus:ring-blue-500/50 appearance-none cursor-pointer">
+                      <label className="text-[10px] font-bold uppercase tracking-widest text-slate-500 ml-1">Product</label>
+                      <select name="productId" required className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-3 text-sm text-white focus:outline-none focus:ring-2 focus:ring-blue-500/50 appearance-none cursor-pointer uppercase font-sans">
                         {products.map(p => (
                           <option key={p.id} value={p.id}>{p.name} - ${p.price}</option>
                         ))}
                       </select>
                     </div>
                     <div className="space-y-2">
-                      <label className="text-[10px] font-bold uppercase tracking-widest text-slate-500">Quantity</label>
-                      <input name="quantity" type="number" defaultValue="1" min="1" required className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-3 text-sm text-white focus:outline-none focus:ring-2 focus:ring-blue-500/50" />
+                      <label className="text-[10px] font-bold uppercase tracking-widest text-slate-500 ml-1">Quantity</label>
+                      <input name="quantity" type="number" defaultValue="1" min="1" required className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-3 text-sm text-white focus:outline-none focus:ring-2 focus:ring-blue-500/50 font-sans" />
                     </div>
                   </>
                 )}
                 
                 <button 
                   type="submit"
-                  className="w-full py-4 bg-blue-600 hover:bg-blue-500 text-white font-bold rounded-2xl shadow-lg shadow-blue-600/20 mt-4 active:scale-95 transition-all"
+                  className="w-full py-4 bg-blue-600 hover:bg-blue-500 text-white font-bold rounded-2xl shadow-lg shadow-blue-600/20 mt-4 active:scale-95 transition-all uppercase"
                 >
                   Create {modalType === 'product' ? 'Product' : 'Order'}
                 </button>
@@ -693,6 +705,29 @@ const App: React.FC = () => {
         .custom-scrollbar::-webkit-scrollbar-thumb { background: rgba(255, 255, 255, 0.05); border-radius: 20px; }
       `}</style>
     </div>
+  );
+};
+
+import AuthPage from './pages/AuthPage';
+
+const App: React.FC = () => {
+  return (
+    <Routes>
+      {/* Route legacy login/signup to AuthPage with appropriate mode */}
+      <Route path="/login" element={<AuthPage />} />
+      <Route path="/signup" element={<AuthPage />} />
+      <Route path="/welcome" element={<AuthPage />} />
+      
+      <Route path="/forgot-password" element={<ForgotPassword />} />
+      <Route path="/reset-password" element={<ResetPassword />} />
+      
+      {/* Protected Main App or Redirect to Login */}
+      <Route path="/" element={
+        localStorage.getItem('accessToken') ? <MainApp /> : <Navigate to="/welcome" replace />
+      } />
+      
+      <Route path="*" element={<Navigate to="/" replace />} />
+    </Routes>
   );
 };
 

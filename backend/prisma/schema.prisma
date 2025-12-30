@@ -1,10 +1,10 @@
 generator client {
-  provider = "prisma-client-js"
+  provider        = "prisma-client-js"
+  previewFeatures = ["driverAdapters"]
 }
 
 datasource db {
   provider = "sqlite"
-  url      = "file:./dev.db"
 }
 
 enum Role {
@@ -21,13 +21,37 @@ enum OrderStatus {
 }
 
 model User {
-  id            String         @id @default(uuid())
-  email         String         @unique
-  password      String
-  role          Role           @default(VIEWER)
-  createdAt     DateTime       @default(now())
-  updatedAt     DateTime       @updatedAt
+  id            String               @id @default(uuid())
+  email         String               @unique
+  password      String?
+  googleId      String?              @unique
+  authProvider  String               @default("local") // local | google
+  role          Role                 @default(VIEWER)
+  createdAt     DateTime             @default(now())
+  updatedAt     DateTime             @updatedAt
   notifications Notification[]
+  resetTokens   PasswordResetToken[]
+  refreshTokens RefreshToken[]
+}
+
+model PasswordResetToken {
+  id        String   @id @default(uuid())
+  tokenHash String   @unique
+  userId    String
+  expiresAt DateTime
+  used      Boolean  @default(false)
+  createdAt DateTime @default(now())
+  user      User     @relation(fields: [userId], references: [id])
+}
+
+model RefreshToken {
+  id        String   @id @default(uuid())
+  tokenHash String   @unique
+  userId    String
+  expiresAt DateTime
+  revoked   Boolean  @default(false)
+  createdAt DateTime @default(now())
+  user      User     @relation(fields: [userId], references: [id])
 }
 
 model Notification {

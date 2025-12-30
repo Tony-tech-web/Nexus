@@ -1,7 +1,13 @@
+import dotenv from "dotenv";
+dotenv.config();
+
+console.log("Starting backend...");
+console.log("DATABASE_URL present:", !!process.env.DATABASE_URL);
+if (!process.env.DATABASE_URL) console.error("FATAL: DATABASE_URL is missing!");
+
 import express from "express";
 import cors from "cors";
 import helmet from "helmet";
-import dotenv from "dotenv";
 
 import authRoutes from './routes/auth.routes';
 import inventoryRoutes from './routes/inventory.routes';

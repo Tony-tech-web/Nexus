@@ -34,9 +34,84 @@ export class AuthController {
   }
 
   static async logout(req: Request, res: Response, next: NextFunction) {
-    // For JWT, client simply discards the token. 
-    // We can return a success message.
-    res.json({ message: 'Logged out successfully' });
+    try {
+      const { refreshToken } = req.body;
+      await AuthService.logout(refreshToken);
+      res.json({ message: 'Logged out successfully' });
+    } catch (err) {
+      next(err);
+    }
+  }
+
+  static async googleLogin(req: Request, res: Response, next: NextFunction) {
+    try {
+      const { idToken } = req.body;
+      if (!idToken) throw new AppError('Google ID token is required', 400);
+      const result = await AuthService.googleLogin(idToken);
+      res.json(result);
+    } catch (err) {
+      next(err);
+    }
+  }
+
+  static async googleCallback(req: Request, res: Response, next: NextFunction) {
+    try {
+      const { code } = req.query;
+      console.log('Google OAuth callback reached with code:', code);
+      res.send("Google OAuth callback reached");
+    } catch (err) {
+      next(err);
+    }
+  }
+
+  static async forgotPassword(req: Request, res: Response, next: NextFunction) {
+    try {
+      const { email } = req.body;
+      const result = await AuthService.forgotPassword(email);
+      res.json(result);
+    } catch (err) {
+      next(err);
+    }
+  }
+
+  static async resetPassword(req: Request, res: Response, next: NextFunction) {
+    try {
+      const result = await AuthService.resetPassword(req.body);
+      res.json(result);
+    } catch (err) {
+      next(err);
+    }
+  }
+
+  static async updateProfile(req: Request, res: Response, next: NextFunction) {
+    try {
+      // @ts-ignore
+      const userId = req.user?.id;
+      const user = await AuthService.updateMe(userId, req.body);
+      res.json(user);
+    } catch (err) {
+      next(err);
+    }
+  }
+
+  static async updatePassword(req: Request, res: Response, next: NextFunction) {
+    try {
+      // @ts-ignore
+      const userId = req.user?.id;
+      const result = await AuthService.updatePassword(userId, req.body);
+      res.json(result);
+    } catch (err) {
+      next(err);
+    }
+  }
+
+  static async getUsers(req: Request, res: Response, next: NextFunction) {
+    try {
+      const users = await AuthService.getAllUsers();
+      res.json(users);
+    } catch (err) {
+      next(err);
+    }
   }
 }
 

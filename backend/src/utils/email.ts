@@ -1,0 +1,44 @@
+import nodemailer from 'nodemailer';
+
+const transporter = nodemailer.createTransport({
+  host: process.env.SMTP_HOST!,
+  port: parseInt(process.env.SMTP_PORT || '587'),
+  auth: {
+    user: process.env.SMTP_USER,
+    pass: process.env.SMTP_PASS,
+  },
+});
+
+export const sendEmail = async (to: string, subject: string, html: string) => {
+  try {
+    const info = await transporter.sendMail({
+      from: `"Nexus Enterprise" <${process.env.SMTP_USER}>`,
+      to,
+      subject,
+      html,
+    });
+    console.log('Message sent: %s', info.messageId);
+    if (process.env.SMTP_HOST === 'smtp.ethereal.email') {
+      console.log('Preview URL: %s', nodemailer.getTestMessageUrl(info));
+    }
+  } catch (error) {
+    console.error('Error sending email:', error);
+    throw error;
+  }
+};
+
+export const sendPasswordResetEmail = async (to: string, token: string) => {
+  const resetUrl = `${process.env.FRONTEND_URL}/reset-password?token=${token}`;
+  const html = `
+    <div style="font-family: sans-serif; max-width: 600px; margin: auto; padding: 20px; border: 1px solid #eee; border-radius: 10px;">
+      <h2 style="color: #2563eb;">Nexus Password Reset</h2>
+      <p>You requested a password reset for your Nexus account.</p>
+      <p>Click the button below to set a new password. This link will expire in 1 hour.</p>
+      <a href="${resetUrl}" style="display: inline-block; padding: 10px 20px; background-color: #2563eb; color: white; text-decoration: none; border-radius: 5px; margin: 20px 0;">Reset Password</a>
+      <p>If you didn't request this, you can safely ignore this email.</p>
+      <hr style="border: 0; border-top: 1px solid #eee; margin: 20px 0;" />
+      <p style="font-size: 12px; color: #666;">Nexus Order Management System</p>
+    </div>
+  `;
+  await sendEmail(to, 'Password Reset Request', html);
+};

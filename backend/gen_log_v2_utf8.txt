@@ -1,0 +1,29 @@
+﻿node.exe : Failed 
+to parse syntax of 
+config file at "C:\
+Users\Anthony\Docum
+ents\WORK\Stark\Sta
+rk\DD\backend\prism
+a.config.ts"
+At line:1 char:1
++ & "C:\Program Fil
+es\nodejs/node.exe"
+ "C:\Program Files\
+nodejs/node_mo ...
++ ~~~~~~~~~~~~~~~~~
+~~~~~~~~~~~~~~~~~~~
+~~~~~~~~~~~~~~~~~~~
+~~~~~~~~~~~~~~
+    + CategoryInfo 
+             : No  
+  tSpecified: (F   
+ ailed to parse    
+...isma.config    
+.ts":String) [    
+], RemoteExcep    
+tion
+    + FullyQualifi 
+   edErrorId : Na  
+  tiveCommandErr   
+ or
+ 

@@ -12,6 +12,7 @@ export const errorHandler = (err: any, req: Request, res: Response, next: NextFu
   const message = err.message || 'Internal Server Error';
 
   console.error(`[Error] ${statusCode} - ${message}`);
+  if (err.stack) console.error(err.stack);
   
   res.status(statusCode).json({
     error: message,
